@@ -29,7 +29,7 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
   private final DatabricksProperties databricksProperties;
   private final WorkspaceClient workspaceClient;
 
-  private Duration pollInterval = Duration.ofSeconds(5);
+  private Duration pollInterval = Duration.ofSeconds(5); // TODO: configurable
   private Map<String, Long> lastUpdatedAt = new HashMap<>();
 
   public DatabricksAssetSynchronizer(DataMeshManagerClient client,
@@ -40,6 +40,7 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
   }
 
 
+  // TODO: @Scheduled
   @Override
   public void run(String... args) throws Exception {
 
@@ -56,8 +57,11 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
     }
   }
 
+  // TODO: @Scheduled
   protected void synchronizeDatabricksAssets() throws ApiException {
     var catalogs = List.of("datamesh_manager_agent_databricks_test3");
+    var databricksLastUpdatedAt = 0L; // load
+    var databricksLastUpdatedAtMax = lastUpdatedAt;
     for (var catalog : catalogs) {
       log.info("Synchronizing catalog {}", catalog);
       var schemas = workspaceClient.schemas().list(catalog);
@@ -66,21 +70,29 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
           continue;
         }
         updateSchema(schema);
-        for (var table : workspaceClient.tables().list(schema.getCatalogName(), schema.getName())) {
+        Iterable<TableInfo> tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
+        for (var table : tables) {
           updateTable(table);
+          databricksLastUpdatedAtMax = max(databricksLastUpdatedAtMax, table.getUpdatedAt());
         }
+
+        // TODO handle deleted
       }
     }
+    // save lastUpdatedMax
+
   }
 
   protected void updateSchema(SchemaInfo schema) throws ApiException {
-    if (alreadySynchronized(schema)) {
-      log.info("Schema {} already synchronized", schema.getFullName());
-      return;
-    }
 
     if (!includeSchema(schema)) {
       log.debug("Skipping schema {}", schema.getFullName());
+      return;
+    }
+
+
+    if (alreadySynchronized(schema)) {
+      log.info("Schema {} already synchronized", schema.getFullName());
       return;
     }
 
@@ -131,6 +143,7 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
                         .name(columnInfo.getName())
                         .type(columnInfo.getTypeText())
                         .description(columnInfo.getComment())
+                        .tags(columnInfo.()
                 ).toList()
             )
             .putPropertiesItem("updatedAt", table.getUpdatedAt().toString())
@@ -150,6 +163,7 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
   }
 
   private boolean alreadySynchronized(SchemaInfo schema) {
+    // todo get 404
     Long lastUpdated = lastUpdatedAt.get(schema.getFullName());
     return lastUpdated != null && lastUpdated >= schema.getUpdatedAt();
   }
