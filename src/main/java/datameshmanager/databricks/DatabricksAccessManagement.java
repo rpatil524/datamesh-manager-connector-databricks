@@ -19,12 +19,14 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Service;
 
-@Component
-public class DatabricksAccessManagementAgent implements CommandLineRunner {
+@Service
+@ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
+public class DatabricksAccessManagement implements CommandLineRunner {
 
-  private static final Logger log = LoggerFactory.getLogger(DatabricksAccessManagementAgent.class);
+  private static final Logger log = LoggerFactory.getLogger(DatabricksAccessManagement.class);
   private final DataMeshManagerClient client;
   private final DataMeshManagerClientProperties clientProperties;
   private final DatabricksProperties databricksProperties;
@@ -33,7 +35,7 @@ public class DatabricksAccessManagementAgent implements CommandLineRunner {
 
   private DataMeshManagerEventListener eventListener = null;
 
-  public DatabricksAccessManagementAgent(
+  public DatabricksAccessManagement(
       DataMeshManagerClient client,
       DataMeshManagerClientProperties clientProperties, DatabricksProperties databricksProperties,
       DatabricksPermissionsService permissionsService,
