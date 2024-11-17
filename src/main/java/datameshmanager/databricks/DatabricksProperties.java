@@ -6,11 +6,20 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record DatabricksProperties(
     String host,
     String token,
+    AssetsProperties assets,
     AccessmanagementProperties accessmanagement
 ) {
 
+  public record AssetsProperties(
+      Boolean enabled,
+      String agentid
+  ) {
+
+  }
+
   public record AccessmanagementProperties(
       Boolean enabled,
+      String agentid,
       AccessmanagementMappingProperties mapping
   ) {
     public record AccessmanagementMappingProperties(

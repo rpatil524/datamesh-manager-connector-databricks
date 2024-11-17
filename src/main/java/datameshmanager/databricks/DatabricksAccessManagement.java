@@ -18,15 +18,17 @@ import java.net.URI;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
-public class DatabricksAccessManagement implements CommandLineRunner {
+public class DatabricksAccessManagement implements ApplicationRunner {
 
   private static final Logger log = LoggerFactory.getLogger(DatabricksAccessManagement.class);
+
   private final DataMeshManagerClient client;
   private final DataMeshManagerClientProperties clientProperties;
   private final DatabricksProperties databricksProperties;
@@ -48,8 +50,8 @@ public class DatabricksAccessManagement implements CommandLineRunner {
   }
 
   @Override
-  public void run(String... args) throws Exception {
-    System.out.println("Running datamesh-manager-agent-databricks for access management");
+  public void run(ApplicationArguments args) throws Exception {
+    log.info("Running datamesh-manager-agent-databricks for access management");
 
     DataMeshManagerEventHandler eventHandler = new DataMeshManagerEventHandler() {
 

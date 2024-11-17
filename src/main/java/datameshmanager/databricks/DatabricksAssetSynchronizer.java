@@ -1,95 +1,105 @@
 package datameshmanager.databricks;
 
 import com.databricks.sdk.WorkspaceClient;
+import com.databricks.sdk.service.catalog.CatalogInfo;
+import com.databricks.sdk.service.catalog.CatalogType;
+import com.databricks.sdk.service.catalog.ListCatalogsRequest;
 import com.databricks.sdk.service.catalog.SchemaInfo;
 import com.databricks.sdk.service.catalog.TableInfo;
+import datameshmanager.sdk.DataMeshManagerAgentRegistration;
 import datameshmanager.sdk.DataMeshManagerClient;
 import datameshmanager.sdk.client.ApiException;
 import datameshmanager.sdk.client.model.Asset;
 import datameshmanager.sdk.client.model.AssetColumnsInner;
 import datameshmanager.sdk.client.model.AssetInfo;
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
+import jakarta.annotation.PreDestroy;
 import java.util.Map;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
 @ConditionalOnProperty(value = "datameshmanager.client.databricks.assets.enabled", havingValue = "true")
-public class DatabricksAssetSynchronizer implements CommandLineRunner {
+public class DatabricksAssetSynchronizer {
 
-  private static final Logger log = LoggerFactory.getLogger(DatabricksAccessManagement.class);
+  private static final Logger log = LoggerFactory.getLogger(DatabricksAssetSynchronizer.class);
 
   private final DataMeshManagerClient client;
-  private final DatabricksProperties databricksProperties;
+  private final DataMeshManagerAgentRegistration agentRegistration;
   private final WorkspaceClient workspaceClient;
+  private final DatabricksProperties databricksProperties;
 
-  private Duration pollInterval = Duration.ofSeconds(5); // TODO: configurable
-  private Map<String, Long> lastUpdatedAt = new HashMap<>();
+  private Long lastUpdatedAt = 0L;
 
-  public DatabricksAssetSynchronizer(DataMeshManagerClient client,
-      DatabricksProperties databricksProperties, WorkspaceClient workspaceClient) {
+  public DatabricksAssetSynchronizer(DataMeshManagerClient client, WorkspaceClient workspaceClient,
+      DatabricksProperties databricksProperties) {
     this.client = client;
-    this.databricksProperties = databricksProperties;
+    this.agentRegistration = new DataMeshManagerAgentRegistration(client, databricksProperties.assets().agentid(), "databricks-assets");
     this.workspaceClient = workspaceClient;
+    this.databricksProperties = databricksProperties;
+
+    this.agentRegistration.register();
+  }
+
+  @Scheduled(fixedDelayString = "${datameshmanager.client.databricks.assets.pollinterval:PT60M}")
+  public void synchronizeAssets() {
+    this.agentRegistration.up();
+    synchronizeDatabricksAssets();
+  }
+
+  @PreDestroy
+  public void onDestroy() {
+    this.agentRegistration.stop();
+    log.info("Stopped asset synchronization");
   }
 
 
-  // TODO: @Scheduled
-  @Override
-  public void run(String... args) throws Exception {
-
-    while (true) {
-      synchronizeDatabricksAssets();
-
-      try {
-        log.info("Sleeping for {} to make the next call", pollInterval);
-        Thread.sleep(pollInterval.toMillis());
-      } catch (InterruptedException e) {
-        break;
+  protected void synchronizeDatabricksAssets() {
+    Long databricksLastUpdatedAtThisRunMax = getLastUpdatedAt();
+    var catalogs = workspaceClient.catalogs().list(new ListCatalogsRequest());
+    for (var catalog : catalogs) {
+      if (!includeCatalog(catalog)) {
+        continue;
       }
 
-    }
-  }
-
-  // TODO: @Scheduled
-  protected void synchronizeDatabricksAssets() throws ApiException {
-    var catalogs = List.of("datamesh_manager_agent_databricks_test3");
-    var databricksLastUpdatedAt = 0L; // load
-    var databricksLastUpdatedAtMax = lastUpdatedAt;
-    for (var catalog : catalogs) {
       log.info("Synchronizing catalog {}", catalog);
-      var schemas = workspaceClient.schemas().list(catalog);
+      var schemas = workspaceClient.schemas().list(catalog.getFullName());
       for (var schema : schemas) {
         if (!includeSchema(schema)) {
           continue;
         }
-        updateSchema(schema);
-        Iterable<TableInfo> tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
+        handleSchema(schema);
+        var tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
         for (var table : tables) {
-          updateTable(table);
-          databricksLastUpdatedAtMax = max(databricksLastUpdatedAtMax, table.getUpdatedAt());
+          handleTable(table);
+          databricksLastUpdatedAtThisRunMax = Math.max(databricksLastUpdatedAtThisRunMax, table.getUpdatedAt());
         }
 
-        // TODO handle deleted
       }
     }
-    // save lastUpdatedMax
+
+    setLastUpdatedAt(databricksLastUpdatedAtThisRunMax);
 
   }
 
-  protected void updateSchema(SchemaInfo schema) throws ApiException {
+  private Long getLastUpdatedAt() {
+    return (Long) getState().getOrDefault("lastUpdatedAt", 0L);
+  }
+
+  private void setLastUpdatedAt(Long databricksLastUpdatedAtThisRunMax) {
+    saveState(Map.of("lastUpdatedAt", databricksLastUpdatedAtThisRunMax));
+  }
+
+
+  protected void handleSchema(SchemaInfo schema) {
 
     if (!includeSchema(schema)) {
       log.debug("Skipping schema {}", schema.getFullName());
       return;
     }
-
 
     if (alreadySynchronized(schema)) {
       log.info("Schema {} already synchronized", schema.getFullName());
@@ -97,25 +107,20 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
     }
 
     log.info("Synchronizing schema {}", schema.getFullName());
-
-    client.getAssetsApi().addAsset(
-        schema.getSchemaId(),
-        new Asset()
-            .id(schema.getSchemaId())
-            .info(new AssetInfo()
-                .name(schema.getFullName())
-                .source("unity")
-                .qualifiedName(schema.getFullName())
-                .type(schema.getCatalogType())
-                .status("active")
-                .description(schema.getComment()))
-            .putPropertiesItem("updatedAt", schema.getUpdatedAt().toString())
-    );
-
-    lastUpdatedAt.put(schema.getFullName(), schema.getUpdatedAt());
+    Asset asset = new Asset()
+        .id(schema.getSchemaId())
+        .info(new AssetInfo()
+            .name(schema.getFullName())
+            .source("unity")
+            .qualifiedName(schema.getFullName())
+            .type(schema.getCatalogType())
+            .status("active")
+            .description(schema.getComment()))
+        .putPropertiesItem("updatedAt", schema.getUpdatedAt().toString());
+    saveAsset(asset);
   }
 
-  protected void updateTable(TableInfo table) throws ApiException {
+  protected void handleTable(TableInfo table) {
     if (!includeTable(table)) {
       log.debug("Skipping table {}", table.getFullName());
       return;
@@ -127,28 +132,42 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
     }
 
     log.info("Synchronizing table {}", table.getFullName());
-    client.getAssetsApi().addAsset(
-        table.getTableId(),
-        new Asset()
-            .id(table.getTableId())
-            .info(new AssetInfo()
-                .name(table.getFullName())
-                .source("unity")
-                .qualifiedName(table.getFullName())
-                .type(table.getTableType().name())
-                .status("active")
-                .description(table.getComment()))
-            .columns(table.getColumns().stream().map(columnInfo ->
-                    new AssetColumnsInner()
-                        .name(columnInfo.getName())
-                        .type(columnInfo.getTypeText())
-                        .description(columnInfo.getComment())
-                        .tags(columnInfo.()
-                ).toList()
-            )
-            .putPropertiesItem("updatedAt", table.getUpdatedAt().toString())
-    );
-    lastUpdatedAt.put(table.getFullName(), table.getUpdatedAt());
+
+    if (table.getDeletedAt() != null) {
+      log.info("Table {} was deleted", table.getFullName());
+      deleteAsset(table.getTableId());
+      return;
+    }
+
+    Asset asset = new Asset()
+        .id(table.getTableId())
+        .info(new AssetInfo()
+            .name(table.getFullName())
+            .source("unity")
+            .qualifiedName(table.getFullName())
+            .type(table.getTableType().name())
+            .status("active")
+            .description(table.getComment()))
+        .putPropertiesItem("updatedAt", table.getUpdatedAt().toString());
+
+    if (table.getColumns() != null) {
+      for (var column : table.getColumns()) {
+        asset.addColumnsItem(new AssetColumnsInner()
+            .name(column.getName())
+            .type(column.getTypeText())
+            .description(column.getComment()));
+      }
+    }
+
+    saveAsset(asset);
+  }
+
+  protected boolean includeCatalog(CatalogInfo catalog) {
+    if (catalog.getCatalogType() == CatalogType.MANAGED_CATALOG) {
+      return true;
+    }
+
+    return false;
   }
 
   protected boolean includeSchema(SchemaInfo schema) {
@@ -163,14 +182,45 @@ public class DatabricksAssetSynchronizer implements CommandLineRunner {
   }
 
   private boolean alreadySynchronized(SchemaInfo schema) {
-    // todo get 404
-    Long lastUpdated = lastUpdatedAt.get(schema.getFullName());
-    return lastUpdated != null && lastUpdated >= schema.getUpdatedAt();
+    // todo check if resource is already knonwn in Data Mesh Manager
+    return this.lastUpdatedAt >= schema.getUpdatedAt();
   }
 
   private boolean alreadySynchronized(TableInfo table) {
-    Long lastUpdated = lastUpdatedAt.get(table.getFullName());
-    return lastUpdated != null && lastUpdated >= table.getUpdatedAt();
+    return this.lastUpdatedAt >= table.getUpdatedAt();
+  }
+
+  public Map<String, Object> getState() {
+    return Map.of("lastUpdatedAt", this.lastUpdatedAt);
+  }
+
+  public void saveState(Map<String, Object> state) {
+    this.lastUpdatedAt = (Long) state.get("lastUpdatedAt");
+  }
+
+  public void saveAsset(Asset asset) {
+
+    try {
+      Asset existingAsset = this.client.getAssetsApi().getAsset(asset.getId());
+      if (Objects.deepEquals(asset, existingAsset)) {
+        log.info("Asset {} already exists and unchanged", asset.getId());
+        return;
+      }
+    } catch (ApiException e) {
+      if (e.getCode() == 404) {
+        log.debug("Asset {} does not exist, so continue", asset.getId());
+      } else {
+        throw e;
+      }
+    }
+
+    log.info("Saving asset {}", asset.getId());
+    client.getAssetsApi().addAsset(asset.getId(), asset);
+  }
+
+  public void deleteAsset(String id) {
+    log.info("Deleting asset {}", id);
+    client.getAssetsApi().deleteAsset(id);
   }
 
 }
