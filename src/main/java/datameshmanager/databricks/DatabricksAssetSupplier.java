@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,13 +37,7 @@ public class DatabricksAssetSupplier implements DataMeshManagerAssetsProvider {
   }
 
   @Override
-  public Stream<Asset> streamAssets() {
-    return fetchNewAssetsFromDatabricks().stream();
-  }
-
-  protected List<Asset> fetchNewAssetsFromDatabricks() {
-    List<Asset> results = new ArrayList<>();
-
+  public void publishAssetsToConsumer(Consumer<Asset> consumer) {
     final var databricksLastUpdatedAt = getLastUpdatedAt();
     var databricksLastUpdatedAtThisRunMax = databricksLastUpdatedAt;
 
@@ -59,19 +54,18 @@ public class DatabricksAssetSupplier implements DataMeshManagerAssetsProvider {
           continue;
         }
 
-        schemaToAsset(schema, databricksLastUpdatedAt).ifPresent(results::add);
+        schemaToAsset(schema, databricksLastUpdatedAt).ifPresent(consumer);
 
         var tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
         for (var table : tables) {
-          tableToAsset(table, databricksLastUpdatedAt).ifPresent(results::add);
+          tableToAsset(table, databricksLastUpdatedAt).ifPresent(consumer);
+
           databricksLastUpdatedAtThisRunMax = Math.max(databricksLastUpdatedAtThisRunMax, table.getUpdatedAt());
         }
       }
     }
 
     setLastUpdatedAt(databricksLastUpdatedAtThisRunMax);
-
-    return results;
   }
 
   private Long getLastUpdatedAt() {
