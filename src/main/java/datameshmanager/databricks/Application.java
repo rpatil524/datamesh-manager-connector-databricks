@@ -4,7 +4,6 @@ import com.databricks.sdk.WorkspaceClient;
 import com.databricks.sdk.core.DatabricksConfig;
 import datameshmanager.sdk.DataMeshManagerAssetsSynchronizer;
 import datameshmanager.sdk.DataMeshManagerClient;
-import datameshmanager.sdk.DataMeshManagerClientProperties;
 import datameshmanager.sdk.DataMeshManagerEventListener;
 import datameshmanager.sdk.DataMeshManagerStateRepositoryInMemory;
 import org.springframework.boot.SpringApplication;
@@ -13,7 +12,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Bean;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.stereotype.Service;
 
 @SpringBootApplication(scanBasePackages = "datameshmanager")
 @ConfigurationPropertiesScan("datameshmanager")
@@ -26,29 +24,30 @@ public class Application {
 
   @Bean
   public WorkspaceClient workspaceClient(DatabricksProperties properties) {
-    DatabricksConfig databricksConfig = new DatabricksConfig()
-        .setHost(properties.host())
-        .setToken(properties.token());
+    var host = properties.host();
+    var token = properties.token();
+    var databricksConfig = new DatabricksConfig().setHost(host).setToken(token);
     return new WorkspaceClient(databricksConfig);
   }
 
   @Bean(initMethod = "start", destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
-  public DataMeshManagerEventListener dataMeshManagerEventListener(DataMeshManagerClient client,
-      DataMeshManagerClientProperties clientProperties,
-      DatabricksProperties databricksProperties, // TODO difference between client and databricks properties?
+  public DataMeshManagerEventListener dataMeshManagerEventListener(DataMeshManagerClient client, DatabricksProperties databricksProperties,
       WorkspaceClient workspaceClient) {
-    return new DataMeshManagerEventListener(clientProperties.id(),
-        new DatabricksAccessManagementHandler(client, databricksProperties, workspaceClient), client,
-        new DataMeshManagerStateRepositoryInMemory());
+    var agentid = databricksProperties.accessmanagement().agentid();
+    var stateRepository = new DataMeshManagerStateRepositoryInMemory();
+    var eventHandler = new DatabricksAccessManagementHandler(client, databricksProperties, workspaceClient);
+    return new DataMeshManagerEventListener(agentid, eventHandler, client, stateRepository);
   }
 
   @Bean(initMethod = "start", destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.assets.enabled", havingValue = "true")
-  public DataMeshManagerAssetsSynchronizer dataMeshManagerAssetsSynchronizer(
-      DatabricksProperties databricksProperties, DataMeshManagerClient dataMeshManagerClient, WorkspaceClient workspaceClient) {
-    return new DataMeshManagerAssetsSynchronizer(databricksProperties.assets().agentid(), dataMeshManagerClient,
-        new DatabricksAssetSupplier(workspaceClient, new DataMeshManagerStateRepositoryInMemory(), databricksProperties));
+  public DataMeshManagerAssetsSynchronizer dataMeshManagerAssetsSynchronizer(DatabricksProperties databricksProperties,
+      DataMeshManagerClient dataMeshManagerClient, WorkspaceClient workspaceClient) {
+    var agentid = databricksProperties.assets().agentid();
+    var stateRepository = new DataMeshManagerStateRepositoryInMemory();
+    var assetsSupplier = new DatabricksAssetsSupplier(workspaceClient, stateRepository, databricksProperties);
+    return new DataMeshManagerAssetsSynchronizer(agentid, dataMeshManagerClient, assetsSupplier);
   }
 
 }

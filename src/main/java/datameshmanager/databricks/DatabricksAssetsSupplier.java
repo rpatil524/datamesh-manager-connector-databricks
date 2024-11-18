@@ -11,25 +11,22 @@ import datameshmanager.sdk.DataMeshManagerStateRepository;
 import datameshmanager.sdk.client.model.Asset;
 import datameshmanager.sdk.client.model.AssetColumnsInner;
 import datameshmanager.sdk.client.model.AssetInfo;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class DatabricksAssetSupplier implements DataMeshManagerAssetsProvider {
+public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
 
-  private static final Logger log = LoggerFactory.getLogger(DatabricksAssetSupplier.class);
+  private static final Logger log = LoggerFactory.getLogger(DatabricksAssetsSupplier.class);
 
   private final WorkspaceClient workspaceClient;
   private final DataMeshManagerStateRepository dataMeshManagerStateRepository;
   private final DatabricksProperties databricksProperties;
 
-  public DatabricksAssetSupplier(WorkspaceClient workspaceClient, DataMeshManagerStateRepository dataMeshManagerStateRepository,
+  public DatabricksAssetsSupplier(WorkspaceClient workspaceClient, DataMeshManagerStateRepository dataMeshManagerStateRepository,
       DatabricksProperties databricksProperties) {
     this.workspaceClient = workspaceClient;
     this.dataMeshManagerStateRepository = dataMeshManagerStateRepository;
