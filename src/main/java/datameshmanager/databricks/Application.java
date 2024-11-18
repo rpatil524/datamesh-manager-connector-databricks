@@ -36,7 +36,7 @@ public class Application {
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
   public DataMeshManagerEventListener dataMeshManagerEventListener(DataMeshManagerClient client,
       DataMeshManagerClientProperties clientProperties,
-      DatabricksProperties databricksProperties,
+      DatabricksProperties databricksProperties, // TODO difference between client and databricks properties?
       WorkspaceClient workspaceClient) {
     return new DataMeshManagerEventListener(clientProperties.id(),
         new DatabricksAccessManagementHandler(client, databricksProperties, workspaceClient), client,
