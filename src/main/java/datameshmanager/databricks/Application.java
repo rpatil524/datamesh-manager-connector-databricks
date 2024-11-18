@@ -1,6 +1,7 @@
 package datameshmanager.databricks;
 
 import com.databricks.sdk.WorkspaceClient;
+import com.databricks.sdk.core.DatabricksConfig;
 import datameshmanager.sdk.DataMeshManagerAssetsSynchronizer;
 import datameshmanager.sdk.DataMeshManagerClient;
 import datameshmanager.sdk.DataMeshManagerClientProperties;
@@ -21,6 +22,14 @@ public class Application {
 
   public static void main(String[] args) {
     SpringApplication.run(Application.class, args);
+  }
+
+  @Bean
+  public WorkspaceClient workspaceClient(DatabricksProperties properties) {
+    DatabricksConfig databricksConfig = new DatabricksConfig()
+        .setHost(properties.host())
+        .setToken(properties.token());
+    return new WorkspaceClient(databricksConfig);
   }
 
   @Bean(initMethod = "start", destroyMethod = "stop")
