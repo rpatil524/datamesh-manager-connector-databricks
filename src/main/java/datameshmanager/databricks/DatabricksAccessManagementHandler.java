@@ -1,11 +1,14 @@
 package datameshmanager.databricks;
 
 import com.databricks.sdk.WorkspaceClient;
+import com.databricks.sdk.service.catalog.PermissionsChange;
+import com.databricks.sdk.service.catalog.PermissionsList;
+import com.databricks.sdk.service.catalog.Privilege;
+import com.databricks.sdk.service.catalog.SchemaInfo;
+import com.databricks.sdk.service.catalog.SecurableType;
+import com.databricks.sdk.service.catalog.UpdatePermissions;
 import datameshmanager.sdk.DataMeshManagerClient;
-import datameshmanager.sdk.DataMeshManagerClientProperties;
 import datameshmanager.sdk.DataMeshManagerEventHandler;
-import datameshmanager.sdk.DataMeshManagerEventListener;
-import datameshmanager.sdk.DataMeshManagerStateRepositoryInMemory;
 import datameshmanager.sdk.client.ApiException;
 import datameshmanager.sdk.client.model.Access;
 import datameshmanager.sdk.client.model.AccessActivatedEvent;
@@ -13,71 +16,38 @@ import datameshmanager.sdk.client.model.AccessDeactivatedEvent;
 import datameshmanager.sdk.client.model.DataProduct;
 import datameshmanager.sdk.client.model.DataProductOutputPortsInner;
 import datameshmanager.sdk.client.model.DataProductOutputPortsInnerServer;
-import jakarta.annotation.PreDestroy;
 import java.net.URI;
+import java.util.Collections;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Service;
 
-@Service
-@ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
-public class DatabricksAccessManagement implements ApplicationRunner {
+public class DatabricksAccessManagementHandler implements DataMeshManagerEventHandler {
 
-  private static final Logger log = LoggerFactory.getLogger(DatabricksAccessManagement.class);
+  private static final Logger log = LoggerFactory.getLogger(DatabricksAccessManagementHandler.class);
 
   private final DataMeshManagerClient client;
-  private final DataMeshManagerClientProperties clientProperties;
   private final DatabricksProperties databricksProperties;
-  private final DatabricksPermissionsService permissionsService;
   private final WorkspaceClient workspaceClient;
 
-  private DataMeshManagerEventListener eventListener = null;
-
-  public DatabricksAccessManagement(
+  public DatabricksAccessManagementHandler(
       DataMeshManagerClient client,
-      DataMeshManagerClientProperties clientProperties, DatabricksProperties databricksProperties,
-      DatabricksPermissionsService permissionsService,
+      DatabricksProperties databricksProperties,
       WorkspaceClient workspaceClient) {
     this.client = client;
-    this.clientProperties = clientProperties;
     this.databricksProperties = databricksProperties;
-    this.permissionsService = permissionsService;
     this.workspaceClient = workspaceClient;
   }
 
   @Override
-  public void run(ApplicationArguments args) throws Exception {
-    log.info("Running datamesh-manager-agent-databricks for access management");
-
-    DataMeshManagerEventHandler eventHandler = new DataMeshManagerEventHandler() {
-
-      @Override
-      public void onAccessActivatedEvent(AccessActivatedEvent event) {
-        log.info("Processing AccessActivatedEvent {}", event.getId());
-        grantPermissions(event.getId());
-      }
-
-      @Override
-      public void onAccessDeactivatedEvent(AccessDeactivatedEvent event) {
-        // TODO revoke permissions in Databricks
-      }
-    };
-
-    // TODO use DataMeshManager as state repository
-    var stateRepository = new DataMeshManagerStateRepositoryInMemory();
-    this.eventListener = new DataMeshManagerEventListener(clientProperties.id(), eventHandler, client, stateRepository);
-    this.eventListener.start();
-
+  public void onAccessActivatedEvent(AccessActivatedEvent event) {
+    log.info("Processing AccessActivatedEvent {}", event.getId());
+    grantPermissions(event.getId());
   }
 
-  @PreDestroy
-  public void onDestroy() {
-    log.info("Stopping event listener");
-    this.eventListener.stop();
+  @Override
+  public void onAccessDeactivatedEvent(AccessDeactivatedEvent event) {
+    // TODO revoke permissions in Databricks
   }
 
   void grantPermissions(String accessId) {
@@ -89,7 +59,7 @@ public class DatabricksAccessManagement implements ApplicationRunner {
     var schemaFullName = getSchemaFullName(outputPort, dataProductId);
     var principal = getConsumerPrincipal(access);
 
-    permissionsService.grantSchemaPermissionsToPrincipal(schemaFullName, principal);
+    grantSchemaPermissionsToPrincipal(schemaFullName, principal);
 
     // TODO: update access resource in Data Mesh Manager with logs
   }
@@ -101,7 +71,8 @@ public class DatabricksAccessManagement implements ApplicationRunner {
       String principalField = databricksProperties.accessmanagement().mapping().dataproduct().customfield();
       if (principalField == null) {
         log.error("Configuration datameshmanager.client.databricks.accessmanagement.mapping.dataproduct.customfield undefined");
-        throw new RuntimeException("Configuration datameshmanager.client.databricks.accessmanagement.mapping.dataproduct.customfield undefined");
+        throw new RuntimeException(
+            "Configuration datameshmanager.client.databricks.accessmanagement.mapping.dataproduct.customfield undefined");
       }
       return consumerDataProduct.getCustom().get(principalField);
     }
@@ -164,6 +135,36 @@ public class DatabricksAccessManagement implements ApplicationRunner {
       log.error("Error getting data product", e);
       throw new RuntimeException(e);
     }
+  }
+
+  public void grantSchemaPermissionsToPrincipal(String schemaFullName, String principal) {
+
+//    verify that the schema exists in databricks
+    SchemaInfo schemaInfo = workspaceClient.schemas().get(schemaFullName);
+    if (schemaInfo == null) {
+      log.error("Schema {} not found in databricks", schemaFullName);
+      return;
+    }
+
+    // create a group for the accessId
+    // TODO
+
+    // grant the group access to the schema
+
+    // add consumer principal to the group
+
+    log.info("Granting SELECT permission to principal {} on schema {}", principal, schemaFullName);
+    PermissionsList grantedPermissions = workspaceClient.grants().update(new UpdatePermissions()
+        .setSecurableType(SecurableType.SCHEMA)
+        .setFullName(schemaFullName)
+        .setChanges(Collections.singleton(
+            new PermissionsChange()
+                .setPrincipal(principal)
+                .setAdd(Collections.singleton(Privilege.SELECT))
+        )));
+    log.info("Granted permissions: {}", grantedPermissions);
+
+    // TODO return log information
   }
 
 }

@@ -6,59 +6,46 @@ import com.databricks.sdk.service.catalog.CatalogType;
 import com.databricks.sdk.service.catalog.ListCatalogsRequest;
 import com.databricks.sdk.service.catalog.SchemaInfo;
 import com.databricks.sdk.service.catalog.TableInfo;
-import datameshmanager.sdk.DataMeshManagerAgentRegistration;
-import datameshmanager.sdk.DataMeshManagerClient;
-import datameshmanager.sdk.client.ApiException;
+import datameshmanager.sdk.DataMeshManagerAssetsProvider;
+import datameshmanager.sdk.DataMeshManagerStateRepository;
 import datameshmanager.sdk.client.model.Asset;
 import datameshmanager.sdk.client.model.AssetColumnsInner;
 import datameshmanager.sdk.client.model.AssetInfo;
-import jakarta.annotation.PreDestroy;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
 
-@Service
-@ConditionalOnProperty(value = "datameshmanager.client.databricks.assets.enabled", havingValue = "true")
-public class DatabricksAssetSynchronizer {
+public class DatabricksAssetSupplier implements DataMeshManagerAssetsProvider {
 
-  private static final Logger log = LoggerFactory.getLogger(DatabricksAssetSynchronizer.class);
+  private static final Logger log = LoggerFactory.getLogger(DatabricksAssetSupplier.class);
 
-  private final DataMeshManagerClient client;
-  private final DataMeshManagerAgentRegistration agentRegistration;
   private final WorkspaceClient workspaceClient;
+  private final DataMeshManagerStateRepository dataMeshManagerStateRepository;
   private final DatabricksProperties databricksProperties;
 
-  private Long lastUpdatedAt = 0L;
-
-  public DatabricksAssetSynchronizer(DataMeshManagerClient client, WorkspaceClient workspaceClient,
+  public DatabricksAssetSupplier(WorkspaceClient workspaceClient, DataMeshManagerStateRepository dataMeshManagerStateRepository,
       DatabricksProperties databricksProperties) {
-    this.client = client;
-    this.agentRegistration = new DataMeshManagerAgentRegistration(client, databricksProperties.assets().agentid(), "databricks-assets");
     this.workspaceClient = workspaceClient;
+    this.dataMeshManagerStateRepository = dataMeshManagerStateRepository;
     this.databricksProperties = databricksProperties;
-
-    this.agentRegistration.register();
   }
 
-  @Scheduled(fixedDelayString = "${datameshmanager.client.databricks.assets.pollinterval:PT60M}")
-  public void synchronizeAssets() {
-    this.agentRegistration.up();
-    synchronizeDatabricksAssets();
+  @Override
+  public Stream<Asset> streamAssets() {
+    return fetchNewAssetsFromDatabricks().stream();
   }
 
-  @PreDestroy
-  public void onDestroy() {
-    this.agentRegistration.stop();
-    log.info("Stopped asset synchronization");
-  }
+  protected List<Asset> fetchNewAssetsFromDatabricks() {
+    List<Asset> results = new ArrayList<>();
 
+    final var databricksLastUpdatedAt = getLastUpdatedAt();
+    var databricksLastUpdatedAtThisRunMax = databricksLastUpdatedAt;
 
-  protected void synchronizeDatabricksAssets() {
-    Long databricksLastUpdatedAtThisRunMax = getLastUpdatedAt();
     var catalogs = workspaceClient.catalogs().list(new ListCatalogsRequest());
     for (var catalog : catalogs) {
       if (!includeCatalog(catalog)) {
@@ -71,39 +58,42 @@ public class DatabricksAssetSynchronizer {
         if (!includeSchema(schema)) {
           continue;
         }
-        handleSchema(schema);
+
+        schemaToAsset(schema, databricksLastUpdatedAt).ifPresent(results::add);
+
         var tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
         for (var table : tables) {
-          handleTable(table);
+          tableToAsset(table, databricksLastUpdatedAt).ifPresent(results::add);
           databricksLastUpdatedAtThisRunMax = Math.max(databricksLastUpdatedAtThisRunMax, table.getUpdatedAt());
         }
-
       }
     }
 
     setLastUpdatedAt(databricksLastUpdatedAtThisRunMax);
 
+    return results;
   }
 
   private Long getLastUpdatedAt() {
-    return (Long) getState().getOrDefault("lastUpdatedAt", 0L);
+    return (Long) dataMeshManagerStateRepository.getState(databricksProperties.assets().agentid()).getOrDefault("lastUpdatedAt", 0L);
   }
 
   private void setLastUpdatedAt(Long databricksLastUpdatedAtThisRunMax) {
-    saveState(Map.of("lastUpdatedAt", databricksLastUpdatedAtThisRunMax));
+    dataMeshManagerStateRepository.saveState(databricksProperties.assets().agentid(),
+        Map.of("lastUpdatedAt", databricksLastUpdatedAtThisRunMax));
   }
 
 
-  protected void handleSchema(SchemaInfo schema) {
+  protected Optional<Asset> schemaToAsset(SchemaInfo schema, Long databricksLastUpdatedAt) {
 
     if (!includeSchema(schema)) {
       log.debug("Skipping schema {}", schema.getFullName());
-      return;
+      return Optional.empty();
     }
 
-    if (alreadySynchronized(schema)) {
+    if (alreadySynchronized(schema, databricksLastUpdatedAt)) {
       log.info("Schema {} already synchronized", schema.getFullName());
-      return;
+      return Optional.empty();
     }
 
     log.info("Synchronizing schema {}", schema.getFullName());
@@ -117,27 +107,22 @@ public class DatabricksAssetSynchronizer {
             .status("active")
             .description(schema.getComment()))
         .putPropertiesItem("updatedAt", schema.getUpdatedAt().toString());
-    saveAsset(asset);
+
+    return Optional.of(asset);
   }
 
-  protected void handleTable(TableInfo table) {
+  protected Optional<Asset> tableToAsset(TableInfo table, Long databricksLastUpdatedAt) {
     if (!includeTable(table)) {
       log.debug("Skipping table {}", table.getFullName());
-      return;
+      return Optional.empty();
     }
 
-    if (alreadySynchronized(table)) {
+    if (alreadySynchronized(table, databricksLastUpdatedAt)) {
       log.info("Table {} already synchronized", table.getFullName());
-      return;
+      return Optional.empty();
     }
 
     log.info("Synchronizing table {}", table.getFullName());
-
-    if (table.getDeletedAt() != null) {
-      log.info("Table {} was deleted", table.getFullName());
-      deleteAsset(table.getTableId());
-      return;
-    }
 
     Asset asset = new Asset()
         .id(table.getTableId())
@@ -159,7 +144,7 @@ public class DatabricksAssetSynchronizer {
       }
     }
 
-    saveAsset(asset);
+    return Optional.of(asset);
   }
 
   protected boolean includeCatalog(CatalogInfo catalog) {
@@ -181,46 +166,12 @@ public class DatabricksAssetSynchronizer {
     return true;
   }
 
-  private boolean alreadySynchronized(SchemaInfo schema) {
-    // todo check if resource is already knonwn in Data Mesh Manager
-    return this.lastUpdatedAt >= schema.getUpdatedAt();
+  private boolean alreadySynchronized(SchemaInfo schema, Long databricksLastUpdatedAt) {
+    return databricksLastUpdatedAt >= schema.getUpdatedAt();
   }
 
-  private boolean alreadySynchronized(TableInfo table) {
-    return this.lastUpdatedAt >= table.getUpdatedAt();
-  }
-
-  public Map<String, Object> getState() {
-    return Map.of("lastUpdatedAt", this.lastUpdatedAt);
-  }
-
-  public void saveState(Map<String, Object> state) {
-    this.lastUpdatedAt = (Long) state.get("lastUpdatedAt");
-  }
-
-  public void saveAsset(Asset asset) {
-
-    try {
-      Asset existingAsset = this.client.getAssetsApi().getAsset(asset.getId());
-      if (Objects.deepEquals(asset, existingAsset)) {
-        log.info("Asset {} already exists and unchanged", asset.getId());
-        return;
-      }
-    } catch (ApiException e) {
-      if (e.getCode() == 404) {
-        log.debug("Asset {} does not exist, so continue", asset.getId());
-      } else {
-        throw e;
-      }
-    }
-
-    log.info("Saving asset {}", asset.getId());
-    client.getAssetsApi().addAsset(asset.getId(), asset);
-  }
-
-  public void deleteAsset(String id) {
-    log.info("Deleting asset {}", id);
-    client.getAssetsApi().deleteAsset(id);
+  private boolean alreadySynchronized(TableInfo table, Long databricksLastUpdatedAt) {
+    return databricksLastUpdatedAt >= table.getUpdatedAt();
   }
 
 }
