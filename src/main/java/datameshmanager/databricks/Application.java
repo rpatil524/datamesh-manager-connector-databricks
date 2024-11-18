@@ -5,7 +5,9 @@ import com.databricks.sdk.core.DatabricksConfig;
 import datameshmanager.sdk.DataMeshManagerAssetsSynchronizer;
 import datameshmanager.sdk.DataMeshManagerClient;
 import datameshmanager.sdk.DataMeshManagerEventListener;
+import datameshmanager.sdk.DataMeshManagerStateRepository;
 import datameshmanager.sdk.DataMeshManagerStateRepositoryInMemory;
+import datameshmanager.sdk.DataMeshManagerStateRepositoryRemote;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,24 +32,27 @@ public class Application {
     return new WorkspaceClient(databricksConfig);
   }
 
+  @Bean
+  public DataMeshManagerStateRepository dataMeshManagerStateRepository(DataMeshManagerClient client) {
+    return new DataMeshManagerStateRepositoryRemote(client);
+  }
+
   @Bean(initMethod = "start", destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
   public DataMeshManagerEventListener dataMeshManagerEventListener(DataMeshManagerClient client, DatabricksProperties databricksProperties,
-      WorkspaceClient workspaceClient) {
+      WorkspaceClient workspaceClient, DataMeshManagerStateRepository stateRepository) {
     var agentid = databricksProperties.accessmanagement().agentid();
-    var stateRepository = new DataMeshManagerStateRepositoryInMemory();
     var eventHandler = new DatabricksAccessManagementHandler(client, databricksProperties, workspaceClient);
-    return new DataMeshManagerEventListener(agentid, eventHandler, client, stateRepository);
+    return new DataMeshManagerEventListener(agentid, client, eventHandler, stateRepository);
   }
 
   @Bean(initMethod = "start", destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.assets.enabled", havingValue = "true")
   public DataMeshManagerAssetsSynchronizer dataMeshManagerAssetsSynchronizer(DatabricksProperties databricksProperties,
-      DataMeshManagerClient dataMeshManagerClient, WorkspaceClient workspaceClient) {
+      DataMeshManagerClient client, WorkspaceClient workspaceClient, DataMeshManagerStateRepository stateRepository) {
     var agentid = databricksProperties.assets().agentid();
-    var stateRepository = new DataMeshManagerStateRepositoryInMemory();
     var assetsSupplier = new DatabricksAssetsSupplier(workspaceClient, stateRepository, databricksProperties);
-    return new DataMeshManagerAssetsSynchronizer(agentid, dataMeshManagerClient, assetsSupplier);
+    return new DataMeshManagerAssetsSynchronizer(agentid, client, assetsSupplier);
   }
 
 }
