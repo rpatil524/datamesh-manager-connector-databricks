@@ -8,6 +8,7 @@ import datameshmanager.sdk.DataMeshManagerEventListener;
 import datameshmanager.sdk.DataMeshManagerStateRepository;
 import datameshmanager.sdk.DataMeshManagerStateRepositoryInMemory;
 import datameshmanager.sdk.DataMeshManagerStateRepositoryRemote;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,6 +31,13 @@ public class Application {
     var token = properties.token();
     var databricksConfig = new DatabricksConfig().setHost(host).setToken(token);
     return new WorkspaceClient(databricksConfig);
+  }
+
+  @Bean
+  public DataMeshManagerClient dataMeshManagerClient(
+      @Value("${datameshmanager.client.host}") String host,
+      @Value("${datameshmanager.client.apikey}") String apiKey) {
+    return new DataMeshManagerClient(host, apiKey);
   }
 
   @Bean
