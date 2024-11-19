@@ -14,7 +14,6 @@ import datameshmanager.sdk.client.model.AssetInfo;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,7 +33,7 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
   }
 
   @Override
-  public void publishAssetsToConsumer(Consumer<Asset> consumer) {
+  public void fetchAssets(AssetCallback assetCallback) {
     final var databricksLastUpdatedAt = getLastUpdatedAt();
     var databricksLastUpdatedAtThisRunMax = databricksLastUpdatedAt;
 
@@ -51,11 +50,11 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
           continue;
         }
 
-        schemaToAsset(schema, databricksLastUpdatedAt).ifPresent(consumer);
+        schemaToAsset(schema, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
 
         var tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
         for (var table : tables) {
-          tableToAsset(table, databricksLastUpdatedAt).ifPresent(consumer);
+          tableToAsset(table, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
 
           databricksLastUpdatedAtThisRunMax = Math.max(databricksLastUpdatedAtThisRunMax, table.getUpdatedAt());
         }
@@ -164,5 +163,6 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
   private boolean alreadySynchronized(TableInfo table, Long databricksLastUpdatedAt) {
     return databricksLastUpdatedAt >= table.getUpdatedAt();
   }
+
 
 }
