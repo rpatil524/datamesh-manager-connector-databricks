@@ -1,6 +1,8 @@
 Data Mesh Manager Agent for Databricks
 ===
 
+The agent for databricks is a Spring Boot application that uses the [Data Mesh Manager SDK](https://github.com/datamesh-manager/datamesh-manager-sdk).
+
 ## Usage
 
 Start the agent using Docker. You must pass the API keys as environment variables.
