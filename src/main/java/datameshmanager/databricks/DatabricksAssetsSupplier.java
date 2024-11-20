@@ -65,12 +65,13 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
   }
 
   private Long getLastUpdatedAt() {
-    return (Long) dataMeshManagerStateRepository.getState(databricksProperties.assets().agentid()).getOrDefault("lastUpdatedAt", 0L);
+    Map<String, Object> state = dataMeshManagerStateRepository.getState();
+    return (Long) state.getOrDefault("lastUpdatedAt", 0L);
   }
 
   private void setLastUpdatedAt(Long databricksLastUpdatedAtThisRunMax) {
-    dataMeshManagerStateRepository.saveState(databricksProperties.assets().agentid(),
-        Map.of("lastUpdatedAt", databricksLastUpdatedAtThisRunMax));
+    Map<String, Object> state = Map.of("lastUpdatedAt", databricksLastUpdatedAtThisRunMax);
+    dataMeshManagerStateRepository.saveState(state);
   }
 
 

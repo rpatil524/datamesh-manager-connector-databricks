@@ -41,17 +41,13 @@ public class Application {
     return new DataMeshManagerClient(host, apiKey);
   }
 
-  @Bean
-  public DataMeshManagerStateRepository dataMeshManagerStateRepository(DataMeshManagerClient client) {
-    return new DataMeshManagerStateRepositoryRemote(client);
-  }
-
   @Bean(destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
   public DataMeshManagerEventListener dataMeshManagerEventListener(DataMeshManagerClient client, DatabricksProperties databricksProperties,
-      WorkspaceClient workspaceClient, DataMeshManagerStateRepository stateRepository, TaskExecutor taskExecutor) {
+      WorkspaceClient workspaceClient, TaskExecutor taskExecutor) {
     var agentid = databricksProperties.accessmanagement().agentid();
     var eventHandler = new DatabricksAccessManagementHandler(client, databricksProperties, workspaceClient);
+    var stateRepository = new DataMeshManagerStateRepositoryRemote(agentid, client);
     var dataMeshManagerEventListener = new DataMeshManagerEventListener(agentid, client, eventHandler, stateRepository);
     taskExecutor.execute(dataMeshManagerEventListener::start);
     return dataMeshManagerEventListener;
@@ -60,8 +56,9 @@ public class Application {
   @Bean(destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.assets.enabled", havingValue = "true")
   public DataMeshManagerAssetsSynchronizer dataMeshManagerAssetsSynchronizer(DatabricksProperties databricksProperties,
-      DataMeshManagerClient client, WorkspaceClient workspaceClient, DataMeshManagerStateRepository stateRepository, TaskExecutor taskExecutor) {
+      DataMeshManagerClient client, WorkspaceClient workspaceClient, TaskExecutor taskExecutor) {
     var agentid = databricksProperties.assets().agentid();
+    var stateRepository = new DataMeshManagerStateRepositoryRemote(agentid, client);
     var assetsSupplier = new DatabricksAssetsSupplier(workspaceClient, stateRepository, databricksProperties);
     var dataMeshManagerAssetsSynchronizer = new DataMeshManagerAssetsSynchronizer(agentid, client, assetsSupplier);
     taskExecutor.execute(dataMeshManagerAssetsSynchronizer::start);
