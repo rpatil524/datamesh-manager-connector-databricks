@@ -3,6 +3,11 @@ Data Mesh Manager Agent for Databricks
 
 The agent for databricks is a Spring Boot application that uses the [datamesh-manager-sdk](https://github.com/datamesh-manager/datamesh-manager-sdk) internally, and is available as a ready-to-use Docker image [datameshmanager/datamesh-manager-agent-databricks](https://hub.docker.com/repository/docker/datameshmanager/datamesh-manager-agent-databricks) to be deployed in your environment.
 
+## Features
+
+- **Asset Synchronization**: Sync tables and schemas of the Unity catalog to the Data Mesh Manager as Assets. 
+- **Access Management**: Listen for AccessActivated and AccessDeactivated events in the Data Mesh Manager and grants access on Databricks to the data consumer.
+
 ## Usage
 
 Start the agent using Docker. You must pass the API keys as environment variables.
