@@ -1,18 +1,37 @@
 package datameshmanager.databricks;
 
+import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "datameshmanager.client.databricks")
 public record DatabricksProperties(
-    String host,
-    String token,
+    WorkspaceProperties workspace,
+    AccountProperties account,
     AssetsProperties assets,
     AccessmanagementProperties accessmanagement
 ) {
 
+  public record WorkspaceProperties(
+      String host,
+      String clientId,
+      String clientSecret
+  ) {
+
+  }
+
+  public record AccountProperties(
+      String host,
+      String accountId,
+      String clientId,
+      String clientSecret
+  ) {
+
+  }
+
   public record AssetsProperties(
       Boolean enabled,
-      String agentid
+      String agentid,
+      Duration pollinterval
   ) {
 
   }

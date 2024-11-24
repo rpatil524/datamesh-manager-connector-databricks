@@ -97,6 +97,10 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
             .type(schema.getCatalogType())
             .status("active")
             .description(schema.getComment()))
+        .putPropertiesItem("host", databricksProperties.workspace().host())
+        .putPropertiesItem("catalog", schema.getCatalogName())
+        .putPropertiesItem("catalogType", schema.getCatalogType())
+        .putPropertiesItem("schema", schema.getName())
         .putPropertiesItem("updatedAt", schema.getUpdatedAt().toString());
 
     return Optional.of(asset);
@@ -124,6 +128,11 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
             .type(table.getTableType().name())
             .status("active")
             .description(table.getComment()))
+        .putPropertiesItem("host", databricksProperties.workspace().host())
+        .putPropertiesItem("catalog", table.getCatalogName())
+        .putPropertiesItem("schema", table.getSchemaName())
+        .putPropertiesItem("table", table.getName())
+        .putPropertiesItem("tableType", table.getTableType())
         .putPropertiesItem("updatedAt", table.getUpdatedAt().toString());
 
     if (table.getColumns() != null) {

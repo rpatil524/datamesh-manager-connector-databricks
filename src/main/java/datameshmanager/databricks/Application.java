@@ -1,21 +1,22 @@
 package datameshmanager.databricks;
 
+import com.databricks.sdk.AccountClient;
 import com.databricks.sdk.WorkspaceClient;
 import com.databricks.sdk.core.DatabricksConfig;
 import datameshmanager.sdk.DataMeshManagerAssetsSynchronizer;
 import datameshmanager.sdk.DataMeshManagerClient;
 import datameshmanager.sdk.DataMeshManagerEventListener;
-import datameshmanager.sdk.DataMeshManagerStateRepository;
 import datameshmanager.sdk.DataMeshManagerStateRepositoryRemote;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.EnableScheduling;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 @SpringBootApplication(scanBasePackages = "datameshmanager")
 @ConfigurationPropertiesScan("datameshmanager")
@@ -28,10 +29,21 @@ public class Application {
 
   @Bean
   public WorkspaceClient workspaceClient(DatabricksProperties properties) {
-    var host = properties.host();
-    var token = properties.token();
-    var databricksConfig = new DatabricksConfig().setHost(host).setToken(token);
+    var databricksConfig = new DatabricksConfig()
+        .setHost(properties.workspace().host())
+        .setClientId(properties.workspace().clientId())
+        .setClientSecret(properties.workspace().clientSecret());
+    // TODO support GCP and Azure
     return new WorkspaceClient(databricksConfig);
+  }
+  @Bean
+  public AccountClient accountClient(DatabricksProperties properties) {
+    var databricksConfig = new DatabricksConfig()
+        .setHost(Objects.requireNonNullElse(properties.account().host(), "https://accounts.cloud.databricks.com"))
+        .setAccountId(Objects.requireNonNull(properties.account().accountId(), "Databricks account ID is required"))
+        .setClientId(properties.account().clientId())
+        .setClientSecret(properties.account().clientSecret());
+    return new AccountClient(databricksConfig);
   }
 
   @Bean
@@ -43,10 +55,13 @@ public class Application {
 
   @Bean(destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.accessmanagement.enabled", havingValue = "true")
-  public DataMeshManagerEventListener dataMeshManagerEventListener(DataMeshManagerClient client, DatabricksProperties databricksProperties,
-      WorkspaceClient workspaceClient, TaskExecutor taskExecutor) {
+  public DataMeshManagerEventListener dataMeshManagerEventListener(
+      DataMeshManagerClient client, DatabricksProperties databricksProperties,
+      WorkspaceClient workspaceClient,
+      AccountClient accountClient,
+      TaskExecutor taskExecutor) {
     var agentid = databricksProperties.accessmanagement().agentid();
-    var eventHandler = new DatabricksAccessManagementHandler(client, databricksProperties, workspaceClient);
+    var eventHandler = new DatabricksAccessManagementHandler(client, workspaceClient,   accountClient);
     var stateRepository = new DataMeshManagerStateRepositoryRemote(agentid, client);
     var dataMeshManagerEventListener = new DataMeshManagerEventListener(agentid, client, eventHandler, stateRepository);
     taskExecutor.execute(dataMeshManagerEventListener::start);
@@ -55,25 +70,26 @@ public class Application {
 
   @Bean(destroyMethod = "stop")
   @ConditionalOnProperty(value = "datameshmanager.client.databricks.assets.enabled", havingValue = "true")
-  public DataMeshManagerAssetsSynchronizer dataMeshManagerAssetsSynchronizer(DatabricksProperties databricksProperties,
-      DataMeshManagerClient client, WorkspaceClient workspaceClient, TaskExecutor taskExecutor) {
+  public DataMeshManagerAssetsSynchronizer dataMeshManagerAssetsSynchronizer(
+      DatabricksProperties databricksProperties,
+      DataMeshManagerClient client,
+      WorkspaceClient workspaceClient,
+      TaskExecutor taskExecutor) {
     var agentid = databricksProperties.assets().agentid();
     var stateRepository = new DataMeshManagerStateRepositoryRemote(agentid, client);
     var assetsSupplier = new DatabricksAssetsSupplier(workspaceClient, stateRepository, databricksProperties);
     var dataMeshManagerAssetsSynchronizer = new DataMeshManagerAssetsSynchronizer(agentid, client, assetsSupplier);
+    if (databricksProperties.assets().pollinterval() != null) {
+      dataMeshManagerAssetsSynchronizer.setDelay(databricksProperties.assets().pollinterval());
+    }
+
     taskExecutor.execute(dataMeshManagerAssetsSynchronizer::start);
     return dataMeshManagerAssetsSynchronizer;
   }
 
   @Bean
-  public TaskExecutor taskExecutor() {
-    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-    executor.setCorePoolSize(5);
-    executor.setMaxPoolSize(10);
-    executor.setQueueCapacity(25);
-    executor.setThreadNamePrefix("datameshmanager-agent-");
-    executor.initialize();
-    return executor;
+  public SimpleAsyncTaskExecutor taskExecutor() {
+    return new SimpleAsyncTaskExecutor();
   }
 
 }
