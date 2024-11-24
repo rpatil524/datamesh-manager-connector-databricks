@@ -122,7 +122,7 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
     Asset asset = new Asset()
         .id(table.getTableId())
         .info(new AssetInfo()
-            .name(table.getFullName())
+            .name(table.getName())
             .source("unity")
             .qualifiedName(table.getFullName())
             .type("unity_table")
