@@ -16,7 +16,12 @@ Start the agent using Docker. You must pass the API keys as environment variable
 docker run \
   -e DATAMESHMANAGER_CLIENT_APIKEY='insert-api-key-here' \
   -e DATAMESHMANAGER_CLIENT_DATABRICKS_WORKSPACE_HOST='https://dbc-xxxxxx.cloud.databricks.com/' \
-  -e DATAMESHMANAGER_CLIENT_DATABRICKS_WORKSPACE_TOKEN='your-access-token' \
+  -e DATAMESHMANAGER_CLIENT_DATABRICKS_WORKSPACE_CLIENTID='your-client-id' 
+  -e DATAMESHMANAGER_CLIENT_DATABRICKS_WORKSPACE_CLIENTSECRET='your-client-secret'
+  -e DATAMESHMANAGER_CLIENT_DATABRICKS_ACCOUNT_HOST='https://accounts.cloud.databricks.com' \
+  -e DATAMESHMANAGER_CLIENT_DATABRICKS_ACCOUNT_ACCOUNTID='your-account-id' \
+  -e DATAMESHMANAGER_CLIENT_DATABRICKS_ACCOUNT_CLIENTID='your-account-client-id' \
+  -e DATAMESHMANAGER_CLIENT_DATABRICKS_ACCOUNT_CLIENTSECRET='your-account-client-secret' \
   datameshmanager/datamesh-manager-agent-databricks:latest
 ```
 
@@ -39,7 +44,7 @@ docker run \
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ACCESSMANAGEMENT_MAPPING_TEAM_CUSTOMFIELD`        | `databricksServicePrincipal`       | Custom field mapping for Databricks service principals in teams.                                                                     |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_AGENTID`                                   | `databricks-assets`                | Identifier for the Databricks assets agent.                                                                                          |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_ENABLED`                                   | `true`                             | Indicates whether Databricks asset tracking is enabled.                                                                              |
-| `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_POLLINTERVAL`                              | `PT5S`                             | Polling interval for Databricks asset updates, in ISO 8601 duration format.                                                          |
+| `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_POLLINTERVAL`                              | `PT10M`                            | Polling interval for Databricks asset updates, in ISO 8601 duration format.                                                          |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_TABLES_INCLUDE`                            | `*`                                | List of included tables for Databricks asset tracking (wildcard `*` includes all tables).                                            |
 
 
