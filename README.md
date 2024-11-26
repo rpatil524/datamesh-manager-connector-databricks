@@ -40,12 +40,9 @@ docker run \
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ACCOUNT_CLIENTSECRET`                             |                                    | The client secret of a an account service principal with Account admin role.                                                         |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ACCESSMANAGEMENT_AGENTID`                         | `databricks-access-management`     | Identifier for the Databricks access management agent.                                                                               |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ACCESSMANAGEMENT_ENABLED`                         | `true`                             | Indicates whether Databricks access management is enabled.                                                                           |
-| `DATAMESHMANAGER_CLIENT_DATABRICKS_ACCESSMANAGEMENT_MAPPING_DATAPRODUCT_CUSTOMFIELD` | `databricksServicePrincipal`       | Custom field mapping for Databricks service principals in data products.                                                             |
-| `DATAMESHMANAGER_CLIENT_DATABRICKS_ACCESSMANAGEMENT_MAPPING_TEAM_CUSTOMFIELD`        | `databricksServicePrincipal`       | Custom field mapping for Databricks service principals in teams.                                                                     |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_AGENTID`                                   | `databricks-assets`                | Identifier for the Databricks assets agent.                                                                                          |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_ENABLED`                                   | `true`                             | Indicates whether Databricks asset tracking is enabled.                                                                              |
 | `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_POLLINTERVAL`                              | `PT10M`                            | Polling interval for Databricks asset updates, in ISO 8601 duration format.                                                          |
-| `DATAMESHMANAGER_CLIENT_DATABRICKS_ASSETS_TABLES_INCLUDE`                            | `*`                                | List of included tables for Databricks asset tracking (wildcard `*` includes all tables).                                            |
 
 
 ## Access Management Flow

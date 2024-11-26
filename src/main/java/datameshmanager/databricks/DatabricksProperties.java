@@ -38,18 +38,9 @@ public record DatabricksProperties(
 
   public record AccessmanagementProperties(
       Boolean enabled,
-      String agentid,
-      AccessmanagementMappingProperties mapping
-  ) {
-    public record AccessmanagementMappingProperties(
-        AccessmanagementMappingCustomfieldProperties dataproduct,
-        AccessmanagementMappingCustomfieldProperties team
-    ) {
-      public record AccessmanagementMappingCustomfieldProperties(
-          String customfield
+      String agentid
       ) {
-      }
-    }
+
   }
 
 
