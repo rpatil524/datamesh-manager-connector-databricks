@@ -60,10 +60,10 @@ public class Application {
       WorkspaceClient workspaceClient,
       AccountClient accountClient,
       TaskExecutor taskExecutor) {
-    var agentid = databricksProperties.accessmanagement().agentid();
+    var connectorid = databricksProperties.accessmanagement().connectorid();
     var eventHandler = new DatabricksAccessManagementHandler(client, workspaceClient,   accountClient);
-    var stateRepository = new DataMeshManagerStateRepositoryRemote(agentid, client);
-    var dataMeshManagerEventListener = new DataMeshManagerEventListener(agentid, client, eventHandler, stateRepository);
+    var stateRepository = new DataMeshManagerStateRepositoryRemote(connectorid, client);
+    var dataMeshManagerEventListener = new DataMeshManagerEventListener(connectorid, "accessmanagement", client, eventHandler, stateRepository);
     taskExecutor.execute(dataMeshManagerEventListener::start);
     return dataMeshManagerEventListener;
   }
@@ -75,10 +75,10 @@ public class Application {
       DataMeshManagerClient client,
       WorkspaceClient workspaceClient,
       TaskExecutor taskExecutor) {
-    var agentid = databricksProperties.assets().agentid();
-    var stateRepository = new DataMeshManagerStateRepositoryRemote(agentid, client);
+    var connectorid = databricksProperties.assets().connectorid();
+    var stateRepository = new DataMeshManagerStateRepositoryRemote(connectorid, client);
     var assetsSupplier = new DatabricksAssetsSupplier(workspaceClient, stateRepository, databricksProperties);
-    var dataMeshManagerAssetsSynchronizer = new DataMeshManagerAssetsSynchronizer(agentid, client, assetsSupplier);
+    var dataMeshManagerAssetsSynchronizer = new DataMeshManagerAssetsSynchronizer(connectorid, client, assetsSupplier);
     if (databricksProperties.assets().pollinterval() != null) {
       dataMeshManagerAssetsSynchronizer.setDelay(databricksProperties.assets().pollinterval());
     }

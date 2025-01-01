@@ -30,7 +30,7 @@ public record DatabricksProperties(
 
   public record AssetsProperties(
       Boolean enabled,
-      String agentid,
+      String connectorid,
       Duration pollinterval
   ) {
 
@@ -38,7 +38,7 @@ public record DatabricksProperties(
 
   public record AccessmanagementProperties(
       Boolean enabled,
-      String agentid
+      String connectorid
       ) {
 
   }
