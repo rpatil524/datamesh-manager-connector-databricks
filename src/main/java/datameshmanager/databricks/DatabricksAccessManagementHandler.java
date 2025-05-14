@@ -53,6 +53,10 @@ public class DatabricksAccessManagementHandler implements DataMeshManagerEventHa
   public void onAccessActivatedEvent(AccessActivatedEvent event) {
     log.info("Processing AccessActivatedEvent {}", event.getId());
     var access = getAccess(event.getId());
+    if( access == null) {
+      log.info("Access {} not found, skip granting permissions", event.getId());
+      return;
+    }
     if (!isApplicable(access)) {
       log.info("Access {} is not applicable for Databricks access management", access.getId());
       return;
@@ -68,6 +72,10 @@ public class DatabricksAccessManagementHandler implements DataMeshManagerEventHa
   public void onAccessDeactivatedEvent(AccessDeactivatedEvent event) {
     log.info("Processing AccessDeactivatedEvent {}", event.getId());
     var access = getAccess(event.getId());
+    if (access == null) {
+      log.info("Access {} not found, skip revoking permissions", event.getId());
+      return;
+    }
     if (!isApplicable(access)) {
       log.info("Access {} is not applicable for Databricks access management", access.getId());
       return;
@@ -339,7 +347,17 @@ public class DatabricksAccessManagementHandler implements DataMeshManagerEventHa
   }
 
   private Access getAccess(String accessId) {
-    return client.getAccessApi().getAccess(accessId);
+    try {
+      return client.getAccessApi().getAccess(accessId);
+    } catch (ApiException e) {
+      if(e.getCode() == 404) {
+        log.info("Access {} not found", accessId);
+        return null;
+      } else {
+        log.error("Error getting access", e);
+        throw e;
+      }
+    }
   }
 
   private DataProduct getDataProduct(String dataProductId) {
