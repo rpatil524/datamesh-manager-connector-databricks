@@ -11,6 +11,8 @@ import datameshmanager.sdk.DataMeshManagerStateRepository;
 import datameshmanager.sdk.client.model.Asset;
 import datameshmanager.sdk.client.model.AssetColumnsInner;
 import datameshmanager.sdk.client.model.AssetInfo;
+import datameshmanager.sdk.client.model.AssetRelationshipsInner;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -43,25 +45,63 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
         continue;
       }
 
-      log.info("Synchronizing catalog {}", catalog);
+      log.info("Synchronizing catalog {}", catalog.getFullName());
+      catalogToAsset(catalog, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
+
       var schemas = workspaceClient.schemas().list(catalog.getFullName());
+      long schemasCount = 0;
       for (var schema : schemas) {
         if (!includeSchema(schema)) {
           continue;
         }
 
-        schemaToAsset(schema, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
+        log.info("Synchronizing schema {}", schema.getFullName());
+        schemaToAsset(schema, catalog, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
 
         var tables = workspaceClient.tables().list(schema.getCatalogName(), schema.getName());
+        long tablesCount = 0;
         for (var table : tables) {
-          tableToAsset(table, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
+          tableToAsset(table, schema, databricksLastUpdatedAt).ifPresent(assetCallback::onAssetUpdated);
 
           databricksLastUpdatedAtThisRunMax = Math.max(databricksLastUpdatedAtThisRunMax, table.getUpdatedAt());
+          tablesCount++;
         }
+        log.info("Synchronized {} tables in schema {}", tablesCount, schema.getFullName());
+        schemasCount++;
       }
+      log.info("Synchronized {} schemas in catalog {}", schemasCount, catalog.getFullName());
     }
 
     setLastUpdatedAt(databricksLastUpdatedAtThisRunMax);
+  }
+
+  private Optional<Asset> catalogToAsset(CatalogInfo catalog, Long databricksLastUpdatedAt) {
+    if (!includeCatalog(catalog)) {
+      log.debug("Skipping catalog {}", catalog.getName());
+      return Optional.empty();
+    }
+
+    if (alreadySynchronized(catalog, databricksLastUpdatedAt)) {
+      log.info("Catalog {} already synchronized", catalog.getName());
+      return Optional.empty();
+    }
+
+    log.info("Synchronizing catalog {}", catalog.getName());
+
+    Asset asset = new Asset()
+        .id(catalog.getMetastoreId())
+        .info(new AssetInfo()
+            .name(catalog.getName())
+            .source("unity")
+            .qualifiedName(catalog.getFullName())
+            .type("unity_catalog")
+            .status("active")
+            .description(catalog.getComment()))
+        .putPropertiesItem("host", databricksProperties.workspace().host())
+        .putPropertiesItem("catalogType", catalog.getCatalogType().toString())
+        .putPropertiesItem("updatedAt", catalog.getUpdatedAt().toString());
+
+    return Optional.of(asset);
   }
 
   private Long getLastUpdatedAt() {
@@ -96,7 +136,7 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
   }
 
 
-  protected Optional<Asset> schemaToAsset(SchemaInfo schema, Long databricksLastUpdatedAt) {
+  protected Optional<Asset> schemaToAsset(SchemaInfo schema, CatalogInfo catalog, Long databricksLastUpdatedAt) {
 
     if (!includeSchema(schema)) {
       log.debug("Skipping schema {}", schema.getFullName());
@@ -122,12 +162,13 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
         .putPropertiesItem("catalog", schema.getCatalogName())
         .putPropertiesItem("catalogType", schema.getCatalogType())
         .putPropertiesItem("schema", schema.getName())
+        .relationships(List.of(new AssetRelationshipsInner().relationshipType("parent").assetId(catalog.getMetastoreId())))
         .putPropertiesItem("updatedAt", schema.getUpdatedAt().toString());
 
     return Optional.of(asset);
   }
 
-  protected Optional<Asset> tableToAsset(TableInfo table, Long databricksLastUpdatedAt) {
+  protected Optional<Asset> tableToAsset(TableInfo table, SchemaInfo schema, Long databricksLastUpdatedAt) {
     if (!includeTable(table)) {
       log.debug("Skipping table {}", table.getFullName());
       return Optional.empty();
@@ -154,6 +195,7 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
         .putPropertiesItem("schema", table.getSchemaName())
         .putPropertiesItem("table", table.getName())
         .putPropertiesItem("tableType", table.getTableType())
+        .relationships(List.of(new AssetRelationshipsInner().relationshipType("parent").assetId(schema.getSchemaId())))
         .putPropertiesItem("updatedAt", table.getUpdatedAt().toString());
 
     if (table.getColumns() != null) {
@@ -185,6 +227,10 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
 
   protected boolean includeTable(TableInfo table) {
     return true;
+  }
+
+  private boolean alreadySynchronized(CatalogInfo catalogInfo, Long databricksLastUpdatedAt) {
+    return databricksLastUpdatedAt >= catalogInfo.getUpdatedAt();
   }
 
   private boolean alreadySynchronized(SchemaInfo schema, Long databricksLastUpdatedAt) {
