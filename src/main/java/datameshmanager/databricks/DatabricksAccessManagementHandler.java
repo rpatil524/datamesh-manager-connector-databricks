@@ -4,11 +4,11 @@ import com.databricks.sdk.AccountClient;
 import com.databricks.sdk.WorkspaceClient;
 import com.databricks.sdk.core.error.platform.NotFound;
 import com.databricks.sdk.service.catalog.PermissionsChange;
-import com.databricks.sdk.service.catalog.PermissionsList;
 import com.databricks.sdk.service.catalog.Privilege;
 import com.databricks.sdk.service.catalog.SchemaInfo;
 import com.databricks.sdk.service.catalog.SecurableType;
 import com.databricks.sdk.service.catalog.UpdatePermissions;
+import com.databricks.sdk.service.catalog.UpdatePermissionsResponse;
 import com.databricks.sdk.service.iam.ComplexValue;
 import com.databricks.sdk.service.iam.Group;
 import com.databricks.sdk.service.iam.ListAccountGroupsRequest;
@@ -332,9 +332,9 @@ public class DatabricksAccessManagementHandler implements DataMeshManagerEventHa
     }
 
     log.info("Granting SELECT permission to principal {} on schema {}", principal, schemaFullName);
-    PermissionsList grantedPermissions = workspaceClient.grants().update(
+    UpdatePermissionsResponse grantedPermissions = workspaceClient.grants().update(
         new UpdatePermissions()
-        .setSecurableType(SecurableType.SCHEMA)
+        .setSecurableType(SecurableType.SCHEMA.name())
         .setFullName(schemaFullName)
         .setChanges(Collections.singleton(
             new PermissionsChange()
