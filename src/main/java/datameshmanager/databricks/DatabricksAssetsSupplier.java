@@ -66,7 +66,28 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
 
   private Long getLastUpdatedAt() {
     Map<String, Object> state = dataMeshManagerStateRepository.getState();
-    return (Long) state.getOrDefault("lastUpdatedAt", 0L);
+    var lastUpdatedAt = state.get("lastUpdatedAt");
+    if (lastUpdatedAt == null) {
+      return 0L;
+    }
+    if (lastUpdatedAt instanceof Long) {
+      return (Long) lastUpdatedAt;
+    }
+
+    if (lastUpdatedAt instanceof Integer) {
+      return ((Integer) lastUpdatedAt).longValue();
+    }
+
+    if (lastUpdatedAt instanceof String) {
+      try {
+        return Long.parseLong((String) lastUpdatedAt);
+      } catch (NumberFormatException e) {
+        log.warn("Failed to parse lastUpdatedAt from state: {}", lastUpdatedAt, e);
+        return 0L;
+      }
+    }
+
+    return 0L;
   }
 
   private void setLastUpdatedAt(Long databricksLastUpdatedAtThisRunMax) {
