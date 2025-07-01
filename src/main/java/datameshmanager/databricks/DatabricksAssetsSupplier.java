@@ -75,35 +75,6 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
     setLastUpdatedAt(databricksLastUpdatedAtThisRunMax);
   }
 
-  private Optional<Asset> catalogToAsset(CatalogInfo catalog, Long databricksLastUpdatedAt) {
-    if (!includeCatalog(catalog)) {
-      log.debug("Skipping catalog {}", catalog.getName());
-      return Optional.empty();
-    }
-
-    if (alreadySynchronized(catalog, databricksLastUpdatedAt)) {
-      log.info("Catalog {} already synchronized", catalog.getName());
-      return Optional.empty();
-    }
-
-    log.info("Synchronizing catalog {}", catalog.getName());
-
-    Asset asset = new Asset()
-        .id(catalog.getMetastoreId())
-        .info(new AssetInfo()
-            .name(catalog.getName())
-            .source("unity")
-            .qualifiedName(catalog.getFullName())
-            .type("unity_catalog")
-            .status("active")
-            .description(catalog.getComment()))
-        .putPropertiesItem("host", databricksProperties.workspace().host())
-        .putPropertiesItem("catalogType", catalog.getCatalogType().toString())
-        .putPropertiesItem("updatedAt", catalog.getUpdatedAt().toString());
-
-    return Optional.of(asset);
-  }
-
   private Long getLastUpdatedAt() {
     Map<String, Object> state = dataMeshManagerStateRepository.getState();
     var lastUpdatedAt = state.get("lastUpdatedAt");
@@ -135,6 +106,40 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
     dataMeshManagerStateRepository.saveState(state);
   }
 
+  private Optional<Asset> catalogToAsset(CatalogInfo catalog, Long databricksLastUpdatedAt) {
+    if (!includeCatalog(catalog)) {
+      log.debug("Skipping catalog {}", catalog.getFullName());
+      return Optional.empty();
+    }
+
+    if (alreadySynchronized(catalog, databricksLastUpdatedAt)) {
+      log.info("Catalog {} already synchronized", catalog.getFullName());
+      return Optional.empty();
+    }
+
+    log.info("Synchronizing catalog {}", catalog.getFullName());
+
+    Asset asset = new Asset()
+        .id(getCatalogNameAsIdAsWorkaround(catalog))
+        .info(new AssetInfo()
+            .name(catalog.getName())
+            .source("unity")
+            .qualifiedName(catalog.getFullName())
+            .type("unity_catalog")
+            .status("active")
+            .description(catalog.getComment()))
+        .putPropertiesItem("host", databricksProperties.workspace().host())
+        .putPropertiesItem("catalogType", catalog.getCatalogType().toString())
+        .putPropertiesItem("updatedAt", catalog.getUpdatedAt().toString());
+
+    return Optional.of(asset);
+  }
+
+  private static String getCatalogNameAsIdAsWorkaround(CatalogInfo catalog) {
+    // TODO use catalog id when it becomes available
+    return catalog.getName();
+  }
+
 
   protected Optional<Asset> schemaToAsset(SchemaInfo schema, CatalogInfo catalog, Long databricksLastUpdatedAt) {
 
@@ -162,7 +167,7 @@ public class DatabricksAssetsSupplier implements DataMeshManagerAssetsProvider {
         .putPropertiesItem("catalog", schema.getCatalogName())
         .putPropertiesItem("catalogType", schema.getCatalogType())
         .putPropertiesItem("schema", schema.getName())
-        .relationships(List.of(new AssetRelationshipsInner().relationshipType("parent").assetId(catalog.getMetastoreId())))
+        .relationships(List.of(new AssetRelationshipsInner().relationshipType("parent").assetId(getCatalogNameAsIdAsWorkaround(catalog))))
         .putPropertiesItem("updatedAt", schema.getUpdatedAt().toString());
 
     return Optional.of(asset);
